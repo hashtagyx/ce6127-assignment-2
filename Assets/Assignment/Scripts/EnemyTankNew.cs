@@ -14,7 +14,9 @@ public class EnemyTankNew : MonoBehaviour
     void Start()
     {
         rbody = GetComponent<Rigidbody>();
-        aiTankAgent = AI.GetComponent<AITankAgent>();
+        aiTankAgent = FindObjectOfType<AITankAgent>();
+        // aiTankAgent = AI.GetComponent<AITankAgent>();
+
         // enemy = GetComponent<GameObject>();
     }
 
@@ -26,8 +28,8 @@ public class EnemyTankNew : MonoBehaviour
 
         if (transform.localPosition.z < posThreshold)
         {
-            Destroy(gameObject);
             aiTankAgent.AddReward(-1.0f);
+            Destroy(gameObject);
         }
     }
 
@@ -40,9 +42,9 @@ public class EnemyTankNew : MonoBehaviour
     {
         if (collision.gameObject.name == "Tank")
         {
-            Destroy(gameObject);
+            aiTankAgent.AddReward(-20.0f);
             aiTankAgent.EndEpisode();
-
+            Destroy(gameObject);
         }
     }
 }
