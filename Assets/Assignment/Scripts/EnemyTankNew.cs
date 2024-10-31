@@ -7,7 +7,6 @@ public class EnemyTankNew : MonoBehaviour
     private AITankAgent aiTankAgent;
 
     private Rigidbody rbody;
-    // private GameObject enemy;
 
     private const float posThreshold = -37f;
 
@@ -15,9 +14,6 @@ public class EnemyTankNew : MonoBehaviour
     {
         rbody = GetComponent<Rigidbody>();
         aiTankAgent = FindObjectOfType<AITankAgent>();
-        // aiTankAgent = AI.GetComponent<AITankAgent>();
-
-        // enemy = GetComponent<GameObject>();
     }
 
     // Update is called once per frame
@@ -29,6 +25,7 @@ public class EnemyTankNew : MonoBehaviour
         if (transform.localPosition.z < posThreshold)
         {
             aiTankAgent.AddReward(-1.0f);
+            aiTankAgent.score -= 1;
             Destroy(gameObject);
         }
     }
@@ -42,7 +39,7 @@ public class EnemyTankNew : MonoBehaviour
     {
         if (collision.gameObject.name == "Tank")
         {
-            aiTankAgent.AddReward(-20.0f);
+            aiTankAgent.AddReward(-5.0f);
             aiTankAgent.EndEpisode();
             Destroy(gameObject);
         }

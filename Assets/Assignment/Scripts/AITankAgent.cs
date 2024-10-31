@@ -3,6 +3,7 @@ using Unity.MLAgents.Sensors;
 using Unity.MLAgents.Actuators;
 using UnityEngine;
 using System.Collections;
+using System.Diagnostics;
 
 public class AITankAgent : Agent
 {
@@ -10,6 +11,10 @@ public class AITankAgent : Agent
     public TankNewSpawn tankSpawner;
     private Rigidbody tankRigidbody;
     private LineRenderer lineRenderer;
+    public int friendlyCount = 0;
+    public int killCount = 0;
+    public int score = 0;
+    public Stopwatch stopwatch;
 
     private void Start()
     {
@@ -27,9 +32,14 @@ public class AITankAgent : Agent
     public override void OnEpisodeBegin()
     {
         SetReward(0.0f);
+        friendlyCount = 0;
+        killCount = 0;
+        score = 0;
         // Reset tank position and velocity
         tankRigidbody.velocity = Vector3.zero;
         transform.localPosition = new Vector3(0, 0, -35);
+        stopwatch = new Stopwatch(); // Initialize the stopwatch
+        stopwatch.Start(); // Start the stopwatch
         if (tankSpawner != null)
         {
             tankSpawner.DestroyAllTanks();
@@ -42,16 +52,52 @@ public class AITankAgent : Agent
         // AI Tank position
         sensor.AddObservation(transform.localPosition);
 
-        // Detect nearby enemy and friendly tanks (using transform)
-        foreach (Transform child in tankSpawner.transform) // Iterate through children of TankNewSpawn
+        float closestEnemyX = 0f;  // Initialize with a default value
+        float closestFriendlyX = 0f; // Initialize with a default value
+        float closestEnemyDistance = float.MaxValue;
+        float closestFriendlyDistance = float.MaxValue;
+        Transform closestEnemy = null;
+        Transform closestFriendly = null;
+
+
+
+        foreach (Transform child in tankSpawner.transform)
         {
+            float distance = Vector3.Distance(transform.position, child.position);
+
             if (child.CompareTag("EnemyAI"))
             {
-                sensor.AddObservation(child.localPosition); // Add enemy position
+                if (distance < closestEnemyDistance)
+                {
+                    closestEnemyDistance = distance;
+                    closestEnemyX = child.position.x;
+                    closestEnemy = child;
+                }
             }
             else if (child.CompareTag("Friendly"))
             {
-                sensor.AddObservation(child.localPosition); // Add friendly position
+                if (distance < closestFriendlyDistance)
+                {
+                    closestFriendlyDistance = distance;
+                    closestFriendlyX = child.position.x;
+                    closestFriendly = child;
+                }
+            }
+        }
+
+        sensor.AddObservation(closestEnemyX);
+        sensor.AddObservation(closestFriendlyX);
+
+        if (closestEnemy != null)
+        {
+            float zDiff = Mathf.Abs(transform.position.z - closestEnemy.position.z); // Calculate z-difference
+
+            // Check both distance and z-difference thresholds
+            if (zDiff <= 30f)
+            {
+                float xDiff = Mathf.Abs(transform.position.x - closestEnemy.position.x);
+                float alignmentReward = 0.001f / (xDiff + 1f); // Avoid division by zero
+                AddReward(alignmentReward);
             }
         }
     }
@@ -59,45 +105,78 @@ public class AITankAgent : Agent
 
     public override void OnActionReceived(ActionBuffers actionBuffers)
     {
-        float moveInput = Mathf.Clamp(actionBuffers.ContinuousActions[0], -1, 1);  // Movement left/right, limited to -1 to 1
+        // float moveInput = Mathf.Clamp(actionBuffers.ContinuousActions[0], -1, 1);  // Movement left/right, limited to -1 to 1
+        int moveInput = actionBuffers.DiscreteActions[0]; // 0 for left, 1 for right, 2 for no movement
 
-        // Move the tank horizontally within speed cap
-        Vector3 move = new Vector3(moveInput * moveSpeed * Time.deltaTime, 0, 0);
-        transform.Translate(move);
+        if (moveInput == 0)
+        {
+            transform.Translate(Vector3.left * moveSpeed * Time.deltaTime);
+        }
+        else if (moveInput == 1)
+        {
+            transform.Translate(Vector3.right * moveSpeed * Time.deltaTime);
+        }
+        if (friendlyCount >= 20 || killCount >= 40)
+        {
+            //Major reward because end goal is this (but also caps the length of each episode with the number of friendly tanks that make it through)
+            AddReward(20.0f);
+            EndEpisode();
+            return;
+        }
 
+        if (score >= 20)
+        {
+            //Major reward because end goal is this
+            AddReward(20.0f);
+            EndEpisode();
+            return;
+        }
+
+        // Penalty given each step to encourage agent to finish task quickly.
+        AddReward(0.001f);
 
         // Handle shooting action
-        if (actionBuffers.DiscreteActions[0] == 1)
+        if (actionBuffers.DiscreteActions[1] == 1)
         {
             ShootRaycast();
         }
 
-        if (transform.localPosition.x < -30.0f | transform.localPosition.x > 30.0f)
+        if (transform.localPosition.y < -0.1f)
         {
-            AddReward(-20.0f);
+            UnityEngine.Debug.Log("We are here for some reason, " + transform.localPosition.y);
+            AddReward(-5.0f);
             EndEpisode();
+            return;
         }
 
-        if (GetCumulativeReward() >= 20f)
-        {
-            EndEpisode();
-        }
     }
 
 
     // Define manual player controls for debugging or testing
     public override void Heuristic(in ActionBuffers actionsOut)
     {
-        Debug.Log("Heuristic method called");
-        var continuousActions = actionsOut.ContinuousActions;
-        continuousActions[0] = Input.GetAxis("Horizontal");
-
+        UnityEngine.Debug.Log("Heuristic method called");
         var discreteActions = actionsOut.DiscreteActions;
+        if (Input.GetKey(KeyCode.LeftArrow))
+        {
+            discreteActions[0] = 0; // Move Left
+        }
+        else if (Input.GetKey(KeyCode.RightArrow))
+        {
+            discreteActions[0] = 1; // Move Right
+        }
+        else
+        {
+            discreteActions[0] = 2; // Do Nothing
+        }
+
         if (Input.GetKeyDown(KeyCode.Space))
         {
-            discreteActions[0] = 1;  // Shoot when space is pressed
-        } else {
-            discreteActions[0] = 0;
+            discreteActions[1] = 1;  // Shoot when space is pressed
+        }
+        else
+        {
+            discreteActions[1] = 0;
         }
     }
 
@@ -106,6 +185,8 @@ public class AITankAgent : Agent
     {
         Ray ray = new Ray(transform.position, transform.forward);
         RaycastHit hit;
+        AddReward(-0.001f); // Penalize spamming of shooting
+
         // Draw the ray in the Scene view to visualize the bullet's path
         if (Physics.Raycast(ray, out hit, 30f))  // Max range of 30 units
         {
@@ -115,14 +196,16 @@ public class AITankAgent : Agent
             StartCoroutine(HideLineRendererAfterDelay(0.1f)); // Hide after 0.1 second
             if (hit.collider.CompareTag("EnemyAI"))
             {
-                AddReward(2.0f);  // Reward for hitting an enemy
+                AddReward(5.0f);  // Reward for hitting an enemy
                 Destroy(hit.collider.gameObject);  // Destroy enemy
+                score += 2;
 
             }
             else if (hit.collider.CompareTag("Friendly"))
             {
-                AddReward(-1.0f);  // Penalty for hitting a friendly
+                AddReward(-2.0f);  // Penalty for hitting a friendly
                 Destroy(hit.collider.gameObject);  // Destroy friendly
+                score -= 1;
             }
         }
         else
