@@ -4,6 +4,7 @@ using Unity.MLAgents.Actuators;
 using UnityEngine;
 using System.Collections;
 using System.Diagnostics;
+using UnityEngine.UIElements;
 
 public class AITankAgent : Agent
 {
@@ -23,7 +24,7 @@ public class AITankAgent : Agent
         lineRenderer = gameObject.AddComponent<LineRenderer>();
         lineRenderer.material = new Material(Shader.Find("Sprites/Default"));
         lineRenderer.material.color = Color.red;
-        lineRenderer.widthMultiplier = 0.1f; // Adjust thickness as needed
+        lineRenderer.widthMultiplier = 0.1f;
         lineRenderer.positionCount = 2; // Set the number of points in the line
         lineRenderer.enabled = false;
     }
@@ -38,13 +39,13 @@ public class AITankAgent : Agent
         // Reset tank position and velocity
         tankRigidbody.velocity = Vector3.zero;
         transform.localPosition = new Vector3(0, 0, -35);
+        transform.localRotation = Quaternion.identity;
         stopwatch = new Stopwatch(); // Initialize the stopwatch
         stopwatch.Start(); // Start the stopwatch
         if (tankSpawner != null)
         {
             tankSpawner.DestroyAllTanks();
         }
-
     }
 
     public override void CollectObservations(VectorSensor sensor)
@@ -54,8 +55,8 @@ public class AITankAgent : Agent
 
         float closestEnemyX = 0f;  // Initialize with a default value
         float closestFriendlyX = 0f; // Initialize with a default value
-        float closestEnemyDistance = float.MaxValue;
-        float closestFriendlyDistance = float.MaxValue;
+        float closestEnemyZ = float.MaxValue;
+        float closestFriendlyZ = float.MaxValue;
         Transform closestEnemy = null;
         Transform closestFriendly = null;
 
@@ -63,22 +64,22 @@ public class AITankAgent : Agent
 
         foreach (Transform child in tankSpawner.transform)
         {
-            float distance = Vector3.Distance(transform.position, child.position);
+            float zVal = child.position.z;
 
             if (child.CompareTag("EnemyAI"))
             {
-                if (distance < closestEnemyDistance)
+                if (zVal < closestEnemyZ)
                 {
-                    closestEnemyDistance = distance;
+                    closestEnemyZ = zVal;
                     closestEnemyX = child.position.x;
                     closestEnemy = child;
                 }
             }
             else if (child.CompareTag("Friendly"))
             {
-                if (distance < closestFriendlyDistance)
+                if (zVal < closestFriendlyZ)
                 {
-                    closestFriendlyDistance = distance;
+                    closestFriendlyZ = zVal;
                     closestFriendlyX = child.position.x;
                     closestFriendly = child;
                 }
@@ -105,8 +106,7 @@ public class AITankAgent : Agent
 
     public override void OnActionReceived(ActionBuffers actionBuffers)
     {
-        // float moveInput = Mathf.Clamp(actionBuffers.ContinuousActions[0], -1, 1);  // Movement left/right, limited to -1 to 1
-        int moveInput = actionBuffers.DiscreteActions[0]; // 0 for left, 1 for right, 2 for no movement
+        int moveInput = actionBuffers.DiscreteActions[0]; // 0 for left, 1 for right
 
         if (moveInput == 0)
         {
@@ -116,9 +116,9 @@ public class AITankAgent : Agent
         {
             transform.Translate(Vector3.right * moveSpeed * Time.deltaTime);
         }
+
         if (friendlyCount >= 20 || killCount >= 40)
         {
-            //Major reward because end goal is this (but also caps the length of each episode with the number of friendly tanks that make it through)
             AddReward(20.0f);
             EndEpisode();
             return;
@@ -126,13 +126,13 @@ public class AITankAgent : Agent
 
         if (score >= 20)
         {
-            //Major reward because end goal is this
+
             AddReward(20.0f);
             EndEpisode();
             return;
         }
 
-        // Penalty given each step to encourage agent to finish task quickly.
+        // Reward given each step to encourage agent to not die for no reason.
         AddReward(0.001f);
 
         // Handle shooting action
@@ -155,7 +155,6 @@ public class AITankAgent : Agent
     // Define manual player controls for debugging or testing
     public override void Heuristic(in ActionBuffers actionsOut)
     {
-        UnityEngine.Debug.Log("Heuristic method called");
         var discreteActions = actionsOut.DiscreteActions;
         if (Input.GetKey(KeyCode.LeftArrow))
         {
@@ -170,7 +169,7 @@ public class AITankAgent : Agent
             discreteActions[0] = 2; // Do Nothing
         }
 
-        if (Input.GetKeyDown(KeyCode.Space))
+        if (Input.GetKey(KeyCode.Space))
         {
             discreteActions[1] = 1;  // Shoot when space is pressed
         }
